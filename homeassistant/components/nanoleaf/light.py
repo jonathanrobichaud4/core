@@ -1,6 +1,7 @@
 """Support for Nanoleaf Lights."""
 from __future__ import annotations
 
+from collections import OrderedDict
 import math
 from typing import Any
 
@@ -26,7 +27,7 @@ from homeassistant.util.color import (
 )
 
 from . import NanoleafEntryData
-from .const import DOMAIN
+from .const import DOMAIN, EMERSION_MODELS, EMERSION_MODES
 from .entity import NanoleafEntity
 
 RESERVED_EFFECTS = ("*Solid*", "*Static*", "*Dynamic*")
@@ -75,14 +76,29 @@ class NanoleafLight(NanoleafEntity, LightEntity):
         # The effects *Static* and *Dynamic* are not supported by Home Assistant.
         # These reserved effects are implicitly set and are not in the effect_list.
         # https://forum.nanoleaf.me/docs/openapi#_byoot0bams8f
-        return (
-            None if self._nanoleaf.effect in RESERVED_EFFECTS else self._nanoleaf.effect
-        )
+        active_effect = ""
+        if self._nanoleaf.effect in RESERVED_EFFECTS:
+            return None
+
+        if self._nanoleaf.effect == "*Emersion*":
+            active_effect = self._nanoleaf.emersion
+        else:
+            active_effect = self._nanoleaf.effect
+
+        return active_effect
 
     @property
     def effect_list(self) -> list[str]:
         """Return the list of supported effects."""
-        return self._nanoleaf.effects_list
+        # return self._nanoleaf.effects_list
+        effect_dict = OrderedDict.fromkeys(self._nanoleaf.effects_list)
+
+        if self._nanoleaf.model in EMERSION_MODELS:
+            for mode in EMERSION_MODES:
+                effect_dict[mode] = None
+
+        effect_list = list(effect_dict.keys())
+        return effect_list
 
     @property
     def is_on(self) -> bool:
@@ -117,7 +133,12 @@ class NanoleafLight(NanoleafEntity, LightEntity):
                 raise ValueError(
                     f"Attempting to apply effect not in the effect list: '{effect}'"
                 )
-            await self._nanoleaf.set_effect(effect)
+
+            if effect not in EMERSION_MODES:
+                await self._nanoleaf.set_effect(effect)
+            else:
+                await self._nanoleaf.set_emersion(effect)
+
         elif hs_color:
             hue, saturation = hs_color
             await self._nanoleaf.set_hue(int(hue))
